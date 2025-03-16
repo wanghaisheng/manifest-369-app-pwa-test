@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 245, 245, 251;
+  --primary-color: #6638c0;
+  --primary-color-light: #7c52d8;
+  --secondary-color: #f5f5fb;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+@layer components {
+  .nav-container {
+    @apply fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center py-2 px-3;
+  }
+
+  .nav-item {
+    @apply flex flex-col items-center justify-center py-1;
+  }
+
+  .nav-item.active {
+    @apply text-purple-600;
+  }
+
+  .nav-item-text {
+    @apply text-xs mt-1;
+  }
+
+  .nav-item-icon {
+    @apply h-6 w-6;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow p-4 mb-4;
+  }
+
+  .primary-button {
+    @apply bg-purple-600 text-white py-2 px-4 rounded-md font-medium hover:bg-purple-700;
+  }
+
+  .secondary-button {
+    @apply bg-gray-200 text-gray-700 py-2 px-4 rounded-md font-medium hover:bg-gray-300;
+  }
+
+  .input-field {
+    @apply border border-gray-300 rounded-md p-2 w-full;
+  }
+
+  .page-container {
+    @apply container mx-auto max-w-md p-4 pb-20;
+  }
+}

@@ -1,0 +1,1 @@
+# 369显化应用\n\n基于3-6-9法则显化练习的Web应用\n\n## 开发环境\n\n### 测试账号\n\n- 普通用户: test@example.com / password123\n- 管理员: admin@example.com / admin123\n\n## 技术栈\n\n- Next.js 15\n- Kysely + SQLite\n- TailwindCSS\n- TypeScript

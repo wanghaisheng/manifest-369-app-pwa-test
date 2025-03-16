@@ -1,0 +1,153 @@
+name: 构建并发布应用
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.0)'
+        required: true
+        default: '1.0.0'
+      release_notes:
+        description: '发布说明'
+        required: true
+        default: '新版本发布'
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建 Web 应用
+        run: npm run build
+
+      - name: 上传 Web 构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-build
+          path: out/
+
+  build-android:
+    needs: build-web
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 设置 Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 下载 Web 构建产物
+        uses: actions/download-artifact@v3
+        with:
+          name: web-build
+          path: out/
+
+      - name: 安装 Capacitor 依赖
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/splash-screen @capacitor-community/sqlite
+
+      - name: 创建 Capacitor 配置
+        run: |
+          cat > capacitor.config.ts << 'EOL'
+          import { CapacitorConfig } from '@capacitor/cli';
+
+          const config: CapacitorConfig = {
+            appId: 'com.heytcm.manifestation369',
+            appName: '369 Manifestation',
+            webDir: 'out',
+            bundledWebRuntime: false,
+            server: {
+              androidScheme: 'https'
+            },
+            plugins: {
+              SplashScreen: {
+                launchShowDuration: 2000,
+                backgroundColor: "#FFFFFF",
+                androidSplashResourceName: "splash",
+                androidScaleType: "CENTER_CROP",
+              },
+              CapacitorSQLite: {
+                iosDatabaseLocation: 'Library/CapacitorDatabase',
+                iosIsEncryption: false,
+                iosKeychainPrefix: 'manifestation369',
+                androidIsEncryption: false,
+              }
+            }
+          };
+
+          export default config;
+          EOL
+
+      - name: 添加 Android 平台
+        run: npx cap add android
+
+      - name: 复制 Web 资源到 Android
+        run: npx cap copy android
+
+      - name: 更新版本号
+        run: |
+          cd android
+          sed -i "s/versionName \"1.0\"/versionName \"${{ github.event.inputs.version }}\"/" app/build.gradle
+          VERSION_CODE=$(echo "${{ github.event.inputs.version }}" | sed 's/\.//g')
+          sed -i "s/versionCode 1/versionCode $VERSION_CODE/" app/build.gradle
+
+      - name: 构建 Android APK
+        run: |
+          cd android
+          ./gradlew assembleDebug
+
+      - name: 上传 Android APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  create-release:
+    needs: [build-web, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 Android APK
+        uses: actions/download-artifact@v3
+        with:
+          name: android-apk
+          path: ./
+
+      - name: 重命名 APK 文件
+        run: mv app-debug.apk 369-manifestation-${{ github.event.inputs.version }}.apk
+
+      - name: 创建 Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: 版本 ${{ github.event.inputs.version }}
+          body: ${{ github.event.inputs.release_notes }}
+          draft: false
+          prerelease: false
+          files: |
+            369-manifestation-${{ github.event.inputs.version }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
