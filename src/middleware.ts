@@ -16,14 +16,6 @@ const skipOnboardingPaths = [
   '/auth'
 ];
 
-// 无需完成付费墙的页面
-const skipPaywallPaths = [
-  '/onboarding',
-  '/paywall',
-  '/api',
-  '/auth'
-];
-
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -40,19 +32,9 @@ export default async function middleware(request: NextRequest) {
   // 检查用户是否完成引导（这里用cookie模拟存储）
   const onboardingCompletedCookie = request.cookies.get('onboarding.completed')?.value;
   const isOnboardingCompleted = !!onboardingCompletedCookie;
-  
-  // 检查用户是否完成付费墙
-  const paywallCompletedCookie = request.cookies.get('paywall.completed')?.value;
-  const isPaywallCompleted = !!paywallCompletedCookie;
 
   // 是否跳过引导检查
   const shouldSkipOnboardingCheck = skipOnboardingPaths.some(path =>
-    pathname === path ||
-    pathname.startsWith(path + '/')
-  );
-  
-  // 是否跳过付费墙检查
-  const shouldSkipPaywallCheck = skipPaywallPaths.some(path =>
     pathname === path ||
     pathname.startsWith(path + '/')
   );
@@ -66,11 +48,6 @@ export default async function middleware(request: NextRequest) {
     // 如果已登录但未完成引导，重定向到引导页
     if (isAuthenticated && !isOnboardingCompleted && !shouldSkipOnboardingCheck) {
       return NextResponse.redirect(new URL('/onboarding', request.url));
-    }
-    
-    // 如果已完成引导但未完成付费墙，重定向到付费墙页面
-    if (isAuthenticated && isOnboardingCompleted && !isPaywallCompleted && !shouldSkipPaywallCheck) {
-      return NextResponse.redirect(new URL('/paywall', request.url));
     }
   }
 
@@ -88,12 +65,6 @@ export default async function middleware(request: NextRequest) {
   if (isAuthenticated && !isOnboardingCompleted && !shouldSkipOnboardingCheck) {
     // 已认证但未完成引导，且不在引导相关页面，重定向到引导页
     return NextResponse.redirect(new URL('/onboarding', request.url));
-  }
-  
-  // 付费墙流程
-  if (isAuthenticated && isOnboardingCompleted && !isPaywallCompleted && !shouldSkipPaywallCheck) {
-    // 已认证且已完成引导，但未完成付费墙，且不在付费墙相关页面，重定向到付费墙页面
-    return NextResponse.redirect(new URL('/paywall', request.url));
   }
 
   return NextResponse.next();

@@ -15,7 +15,6 @@ export type User = {
   image?: string | null;
   emailVerified?: Date | null;
   onboardingCompleted?: boolean;
-  paywallCompleted?: boolean;
 };
 
 // 会话类型
@@ -31,76 +30,102 @@ const TEST_USERS = [
     email: 'test@example.com',
     password: 'password123',
     name: '测试账号',
-    onboardingCompleted: true,
-    paywallCompleted: true
+    onboardingCompleted: true
   },
   {
     id: 'user2',
     email: 'admin@example.com',
     password: 'admin123',
     name: '管理员',
-    onboardingCompleted: false,
-    paywallCompleted: false
+    onboardingCompleted: false
   }
 ];
 
 // 用于存储会话的localStorage键
 const SESSION_STORAGE_KEY = 'auth.session';
 const ONBOARDING_COMPLETED_KEY = 'onboarding.completed';
-const PAYWALL_COMPLETED_KEY = 'paywall.completed';
+
+// 启用详细日志
+const ENABLE_DEBUG_LOGS = true;
+
+// 日志助手函数
+function logDebug(message: string, data?: any) {
+  if (!ENABLE_DEBUG_LOGS) return;
+
+  if (data) {
+    console.log(`[Auth Debug] ${message}`, data);
+  } else {
+    console.log(`[Auth Debug] ${message}`);
+  }
+}
 
 // 获取存储的会话
 function getSavedSession(): Session | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined') {
+    logDebug('getSavedSession called on server, returning null');
+    return null;
+  }
 
   try {
+    logDebug('Getting saved session from localStorage');
     const saved = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!saved) return null;
 
+    if (!saved) {
+      logDebug('No saved session found');
+      return null;
+    }
+
+    logDebug('Parsing saved session');
     const parsed = JSON.parse(saved);
 
     // 确保过期日期是Date对象
     if (parsed && parsed.expires) {
       parsed.expires = new Date(parsed.expires);
+      logDebug('Session expires at', parsed.expires);
 
       // 检查会话是否过期
       if (parsed.expires < new Date()) {
+        logDebug('Session has expired, removing');
         localStorage.removeItem(SESSION_STORAGE_KEY);
         return null;
       }
     }
 
+    logDebug('Returning valid session', parsed);
     return parsed;
   } catch (error) {
-    console.error('Failed to parse saved session', error);
+    console.error('[Auth Error] Failed to parse saved session', error);
     return null;
   }
 }
 
-// 保存会话到localStorage
+// 保存会话到localStorage和cookies
 function saveSession(session: Session | null) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') {
+    logDebug('saveSession called on server, ignoring');
+    return;
+  }
 
   if (session === null) {
+    logDebug('Clearing session');
     localStorage.removeItem(SESSION_STORAGE_KEY);
     document.cookie = `auth.session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
     document.cookie = `onboarding.completed=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-    document.cookie = `paywall.completed=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
   } else {
+    logDebug('Saving session to localStorage', session);
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
 
     // 设置cookie，用于中间件检测登录状态
     const expires = new Date(session.expires);
-    document.cookie = `auth.session=true; expires=${expires.toUTCString()}; path=/;`;
+    const authCookie = `auth.session=true; expires=${expires.toUTCString()}; path=/;`;
+    logDebug('Setting auth cookie', authCookie);
+    document.cookie = authCookie;
 
     // 如果用户已完成引导，设置引导完成cookie
     if (session.user.onboardingCompleted) {
-      document.cookie = `onboarding.completed=true; expires=${expires.toUTCString()}; path=/;`;
-    }
-    
-    // 如果用户已完成付费墙，设置付费墙完成cookie
-    if (session.user.paywallCompleted) {
-      document.cookie = `paywall.completed=true; expires=${expires.toUTCString()}; path=/;`;
+      const onboardingCookie = `onboarding.completed=true; expires=${expires.toUTCString()}; path=/;`;
+      logDebug('Setting onboarding cookie', onboardingCookie);
+      document.cookie = onboardingCookie;
     }
   }
 }
@@ -114,21 +139,34 @@ export function useIsAuthenticated() {
     isLoading: true,
     user: null as User | null,
     session: null as Session | null,
-    isOnboardingCompleted: false,
-    isPaywallCompleted: false
+    isOnboardingCompleted: false
   });
 
   useEffect(() => {
     // 在客户端加载保存的会话
+    logDebug('useIsAuthenticated hook initialized');
     const savedSession = getSavedSession();
 
-    setState({
+    // 检查 onboarding 状态
+    const isOnboardingCompleted = !!savedSession?.user?.onboardingCompleted;
+    logDebug('Onboarding completed status:', isOnboardingCompleted);
+
+    // 将 onboardingCompleted 保存到 state
+    const newState = {
       isAuthenticated: !!savedSession?.user,
       isLoading: false,
       user: savedSession?.user || null,
       session: savedSession,
-      isOnboardingCompleted: !!savedSession?.user?.onboardingCompleted,
-      isPaywallCompleted: !!savedSession?.user?.paywallCompleted
+      isOnboardingCompleted
+    };
+
+    logDebug('Setting auth state', newState);
+    setState(newState);
+
+    console.log('Auth state loaded:', {
+      isAuthenticated: !!savedSession?.user,
+      isOnboardingCompleted,
+      user: savedSession?.user
     });
   }, []);
 
@@ -142,28 +180,35 @@ export function useIsAuthenticated() {
  */
 export async function signIn(provider: string, options?: any) {
   try {
-    console.log(`Signing in with ${provider}`, options);
+    logDebug(`signIn called with provider: ${provider}`, options);
 
     // 模拟延迟
+    logDebug('Simulating network delay (500ms)');
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // 凭证登录模拟
     if (provider === 'credentials') {
       const { email, password } = options || {};
+      logDebug(`Credentials sign-in attempt for email: ${email}`);
 
       // 验证必须提供邮箱和密码
       if (!email || !password) {
+        logDebug('Missing email or password');
         return { ok: false, error: '请提供邮箱和密码' };
       }
 
       // 查找测试用户
+      logDebug('Looking for matching test user');
       const user = TEST_USERS.find(
         u => u.email === email && u.password === password
       );
 
       if (!user) {
+        logDebug('No matching user found');
         return { ok: false, error: '邮箱或密码错误' };
       }
+
+      logDebug('User found', user);
 
       // 创建会话
       const session: Session = {
@@ -171,39 +216,50 @@ export async function signIn(provider: string, options?: any) {
           id: user.id,
           name: user.name,
           email: user.email,
-          onboardingCompleted: user.onboardingCompleted,
-          paywallCompleted: user.paywallCompleted
+          onboardingCompleted: user.onboardingCompleted
         },
         expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7天
       };
 
+      logDebug('Created session', session);
+
       // 保存会话
       saveSession(session);
+      logDebug('Session saved');
 
+      // 确定重定向URL
+      const redirectUrl = !user.onboardingCompleted
+        ? '/onboarding'
+        : (options?.callbackUrl || '/');
+
+      logDebug('Login successful, should redirect to:', redirectUrl);
+
+      // 如果不需要手动控制重定向，尝试使用window重定向
       if (options?.redirect !== false) {
-        // 如果未完成引导流程，重定向到引导页面
-        // 如果完成引导但未完成付费墙，重定向到付费墙页面
-        // 否则重定向到回调URL或首页
-        let redirectUrl = '/';
-        if (!user.onboardingCompleted) {
-          redirectUrl = '/onboarding';
-        } else if (!user.paywallCompleted) {
-          redirectUrl = '/paywall';
-        } else {
-          redirectUrl = options?.callbackUrl || '/';
+        try {
+          logDebug('Auto redirect mode, redirecting to:', redirectUrl);
+          window.location.href = redirectUrl;
+          return { ok: true };
+        } catch (e) {
+          logDebug('Auto redirect failed, returning for manual handling', e);
         }
-
-        window.location.href = redirectUrl;
-        return { ok: true };
       }
 
-      return { ok: true, session };
+      // 返回成功状态和会话信息，让调用方处理重定向
+      return {
+        ok: true,
+        session,
+        redirectUrl
+      };
     }
 
     // 社交登录模拟
     if (['google', 'github'].includes(provider)) {
+      logDebug(`Social sign-in with ${provider}`);
+
       // 使用第一个测试用户模拟
       const user = TEST_USERS[0];
+      logDebug('Using test user for social login', user);
 
       const session: Session = {
         user: {
@@ -218,80 +274,128 @@ export async function signIn(provider: string, options?: any) {
         expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7天
       };
 
+      logDebug('Created session for social login', session);
+
       // 保存会话
       saveSession(session);
+      logDebug('Session saved for social login');
 
-      // 如果未完成引导流程，重定向到引导页面，否则重定向到回调URL或首页
+      // 确定重定向URL
       const redirectUrl = !user.onboardingCompleted
         ? '/onboarding'
         : (options?.callbackUrl || '/');
 
-      window.location.href = redirectUrl;
-      return { ok: true };
+      logDebug('Social login successful, should redirect to:', redirectUrl);
+
+      // 如果不需要手动控制重定向，尝试使用window重定向
+      if (options?.redirect !== false) {
+        try {
+          logDebug('Auto redirect mode for social login, redirecting to:', redirectUrl);
+          window.location.href = redirectUrl;
+          return { ok: true };
+        } catch (e) {
+          logDebug('Auto redirect failed for social login, returning for manual handling', e);
+        }
+      }
+
+      // 返回成功状态和会话信息，让调用方处理重定向
+      return {
+        ok: true,
+        session,
+        redirectUrl
+      };
     }
 
     // 魔术链接登录 - 通常通过链接参数验证，这里仅为模拟
     if (provider === 'email') {
+      logDebug('Magic link login, returning success');
       return { ok: true, error: null };
     }
 
-    // 默认行为
-    return { ok: false, error: `不支持的登录方式: ${provider}` };
-  } catch (error: any) {
-    return {
-      ok: false,
-      error: error.message || '登录失败'
-    };
-  }
-}
+    // Passkey登录模拟
+    if (provider === 'passkey') {
+      logDebug('Passkey sign-in attempt');
+      // 使用第一个测试用户模拟
+      const user = TEST_USERS[0];
+      logDebug('Using test user for passkey login', user);
 
-/**
- * 注册函数
- * @param userData 用户数据
- */
-export async function register(userData: any) {
-  try {
-    // 模拟延迟
-    await new Promise(resolve => setTimeout(resolve, 500));
+      const session: Session = {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          onboardingCompleted: user.onboardingCompleted
+        },
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7天
+      };
 
-    console.log('Registering user', userData);
+      logDebug('Created session for passkey login', session);
 
-    // 验证邮箱是否被使用
-    if (TEST_USERS.find(user => user.email === userData.email)) {
-      return { ok: false, error: '该邮箱已被注册' };
+      // 保存会话
+      saveSession(session);
+      logDebug('Session saved for passkey login');
+
+      // 确定重定向URL
+      const redirectUrl = !user.onboardingCompleted
+        ? '/onboarding'
+        : (options?.callbackUrl || '/');
+
+      logDebug('Passkey login successful, should redirect to:', redirectUrl);
+
+      // 如果不需要手动控制重定向，尝试使用window重定向
+      if (options?.redirect !== false) {
+        try {
+          logDebug('Auto redirect mode for passkey login, redirecting to:', redirectUrl);
+          window.location.href = redirectUrl;
+          return { ok: true };
+        } catch (e) {
+          logDebug('Auto redirect failed for passkey login, returning for manual handling', e);
+        }
+      }
+
+      // 返回成功状态和会话信息
+      return {
+        ok: true,
+        session,
+        redirectUrl
+      };
     }
 
-    // 模拟成功注册 - 在真实应用中会写入数据库
-    return { ok: true, error: null };
+    // 不支持的提供商
+    logDebug(`Unsupported provider: ${provider}`);
+    return { ok: false, error: `不支持的登录方式: ${provider}` };
   } catch (error: any) {
-    return {
-      ok: false,
-      error: error.message || '注册失败'
-    };
+    console.error('[Auth Error] Login error:', error);
+    return { ok: false, error: error.message || '登录失败' };
   }
 }
 
 /**
- * 发送魔术链接函数
+ * 请求魔术链接
  * @param email 邮箱
  * @param options 选项
  */
 export async function requestMagicLink(email: string, options?: any) {
   try {
+    logDebug(`requestMagicLink called for email: ${email}`, options);
+
     // 模拟延迟
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    console.log(`Sending magic link to ${email}`, options);
-
     // 验证邮箱存在
-    if (!TEST_USERS.find(user => user.email === email)) {
+    const userExists = !!TEST_USERS.find(user => user.email === email);
+    logDebug(`User exists check: ${userExists}`);
+
+    if (!userExists) {
       // 不要在真实应用中透露用户是否存在，这里仅为测试目的
-      console.log('User not found, but we pretend to send the link anyway');
+      logDebug('User not found, but we pretend to send the link anyway');
     }
 
     // 模拟成功发送
+    logDebug('Magic link request successful');
     return { ok: true, error: null };
   } catch (error: any) {
+    console.error('[Auth Error] Magic link request failed:', error);
     return {
       ok: false,
       error: error.message || '发送魔术链接失败'
@@ -305,21 +409,25 @@ export async function requestMagicLink(email: string, options?: any) {
  */
 export async function signOut(options?: any) {
   try {
+    logDebug('signOut called', options);
+
     // 模拟延迟
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    console.log('Signing out', options);
-
     // 清除会话
+    logDebug('Clearing session');
     saveSession(null);
 
     if (options?.callbackUrl) {
+      logDebug(`Redirecting to ${options.callbackUrl}`);
       window.location.href = options.callbackUrl;
       return { ok: true };
     }
 
+    logDebug('Sign out successful');
     return { ok: true, error: null };
   } catch (error: any) {
+    console.error('[Auth Error] Sign out error:', error);
     return {
       ok: false,
       error: error.message || '登出失败'
@@ -332,49 +440,28 @@ export async function signOut(options?: any) {
  */
 export async function completeOnboarding() {
   try {
+    logDebug('completeOnboarding called');
     const session = getSavedSession();
 
     if (!session) {
+      logDebug('No active session found');
       return { ok: false, error: '用户未登录' };
     }
 
     // 更新用户的引导状态
+    logDebug('Updating onboarding status to completed');
     session.user.onboardingCompleted = true;
 
     // 保存更新后的会话
     saveSession(session);
+    logDebug('Updated session saved');
 
     return { ok: true };
   } catch (error: any) {
+    console.error('[Auth Error] Complete onboarding error:', error);
     return {
       ok: false,
       error: error.message || '更新引导状态失败'
-    };
-  }
-}
-
-/**
- * 更新付费墙完成状态
- */
-export async function completePaywall() {
-  try {
-    const session = getSavedSession();
-
-    if (!session) {
-      return { ok: false, error: '用户未登录' };
-    }
-
-    // 更新用户的付费墙状态
-    session.user.paywallCompleted = true;
-
-    // 保存更新后的会话
-    saveSession(session);
-
-    return { ok: true };
-  } catch (error: any) {
-    return {
-      ok: false,
-      error: error.message || '更新付费墙状态失败'
     };
   }
 }

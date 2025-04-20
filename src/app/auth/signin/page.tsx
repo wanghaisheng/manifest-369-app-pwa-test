@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { signIn, requestMagicLink } from "@/lib/auth/auth-client";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -13,9 +13,19 @@ export default function SignIn() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [showTestAccounts, setShowTestAccounts] = useState(false);
   const [testAccounts, setTestAccounts] = useState<any[]>([]);
+  const [loginSuccess, setLoginSuccess] = useState(false);
+  const [redirectMessage, setRedirectMessage] = useState("");
 
   const searchParams = useSearchParams();
+  const router = useRouter();
   const callbackUrl = searchParams?.get("callbackUrl") || "/";
+
+  // Page load debugging
+  useEffect(() => {
+    console.log('=== SignIn Page Loaded ===');
+    console.log('CallbackUrl:', callbackUrl);
+    console.log('Search params:', Object.fromEntries(searchParams?.entries() || []));
+  }, [callbackUrl, searchParams]);
 
   // 获取测试账号
   useEffect(() => {
@@ -26,6 +36,7 @@ export default function SignIn() {
         .then(data => {
           if (data.accounts) {
             setTestAccounts(data.accounts);
+            console.log('Test accounts loaded:', data.accounts);
           }
         })
         .catch(err => console.error('Failed to fetch test accounts:', err));
@@ -39,17 +50,40 @@ export default function SignIn() {
     setError("");
 
     try {
+      console.log("Attempting to sign in with:", email, password);
+
       const result = await signIn("credentials", {
         email,
         password,
-        redirect: true,
-        callbackUrl,
+        redirect: false,
+        callbackUrl
       });
+
+      console.log("Sign in result:", result);
 
       if (result?.error) {
         setError(result.error);
+        console.error("Login error:", result.error);
+      } else if (result?.ok) {
+        // 登录成功
+        console.log("Login successful");
+        setLoginSuccess(true);
+
+        // 获取重定向URL
+        const redirectTo = result.redirectUrl ||
+                          (result.session?.user?.onboardingCompleted ? callbackUrl : '/onboarding');
+
+        setRedirectMessage(`正在跳转到 ${redirectTo}...`);
+        console.log(`Redirecting to ${redirectTo}`);
+
+        // 延迟一下再重定向，让用户看到成功信息
+        setTimeout(() => {
+          console.log('Executing router.push to:', redirectTo);
+          router.push(redirectTo);
+        }, 1000);
       }
     } catch (err: any) {
+      console.error("Login error:", err);
       setError(err.message || "登录失败，请重试");
     } finally {
       setIsLoading(false);
@@ -60,6 +94,7 @@ export default function SignIn() {
   const fillTestAccount = (account: any) => {
     setEmail(account.email);
     setPassword(account.password);
+    console.log('Filled test account:', account.email);
   };
 
   // 处理魔术链接登录
@@ -75,7 +110,7 @@ export default function SignIn() {
 
     try {
       await requestMagicLink(email, {
-        callbackUrl,
+        callbackUrl
       });
       setMagicLinkSent(true);
     } catch (err: any) {
@@ -86,18 +121,92 @@ export default function SignIn() {
   };
 
   // 处理社交登录
-  const handleSocialSignIn = (provider: string) => {
-    signIn(provider, {
-      callbackUrl,
-    });
+  const handleSocialSignIn = async (provider: string) => {
+    setIsLoading(true);
+    try {
+      console.log(`Initiating ${provider} login`);
+      const result = await signIn(provider, {
+        redirect: false,
+        callbackUrl
+      });
+
+      if (result?.ok) {
+        setLoginSuccess(true);
+
+        // 获取重定向URL
+        const redirectTo = result.redirectUrl ||
+                          (result.session?.user?.onboardingCompleted ? callbackUrl : '/onboarding');
+
+        setRedirectMessage(`正在跳转到 ${redirectTo}...`);
+        console.log(`Social login successful. Redirecting to ${redirectTo}`);
+
+        // 延迟一下再重定向，让用户看到成功信息
+        setTimeout(() => {
+          console.log('Executing router.push for social login:', redirectTo);
+          router.push(redirectTo);
+        }, 1000);
+      } else if (result?.error) {
+        setError(result.error);
+      }
+    } catch (err: any) {
+      console.error("Social login error:", err);
+      setError(err.message || "社交登录失败，请重试");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 处理Passkey登录
-  const handlePasskeySignIn = () => {
-    signIn("passkey", {
-      callbackUrl,
-    });
+  const handlePasskeySignIn = async () => {
+    setIsLoading(true);
+    try {
+      console.log('Initiating passkey login');
+      const result = await signIn("passkey", {
+        redirect: false,
+        callbackUrl
+      });
+
+      if (result?.ok) {
+        setLoginSuccess(true);
+
+        // 获取重定向URL
+        const redirectTo = result.redirectUrl ||
+                          (result.session?.user?.onboardingCompleted ? callbackUrl : '/onboarding');
+
+        setRedirectMessage(`正在跳转到 ${redirectTo}...`);
+        console.log(`Passkey login successful. Redirecting to ${redirectTo}`);
+
+        // 延迟一下再重定向，让用户看到成功信息
+        setTimeout(() => {
+          console.log('Executing router.push for passkey login:', redirectTo);
+          router.push(redirectTo);
+        }, 1000);
+      } else if (result?.error) {
+        setError(result.error);
+      }
+    } catch (err: any) {
+      console.error("Passkey login error:", err);
+      setError(err.message || "Passkey登录失败，请重试");
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  if (loginSuccess) {
+    return (
+      <div className="w-full max-w-md mx-auto p-6">
+        <div className="bg-white rounded-lg shadow-md p-8">
+          <h2 className="text-2xl font-bold text-center mb-6">登录成功</h2>
+          <p className="text-center mb-4">
+            {redirectMessage || "正在跳转..."}
+          </p>
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (magicLinkSent) {
     return (
@@ -128,6 +237,15 @@ export default function SignIn() {
             {error}
           </div>
         )}
+
+        {/* Development test accounts */}
+        <div className="mb-4 p-2 bg-purple-50 rounded-md">
+          <p className="text-purple-700 text-sm font-medium">开发测试账号</p>
+          <div className="mt-1 text-sm">
+            <div>用户: test@example.com / password123</div>
+            <div>管理员: admin@example.com / admin123</div>
+          </div>
+        </div>
 
         {/* 测试账号提示 - 仅在开发环境显示 */}
         {testAccounts.length > 0 && (
@@ -245,6 +363,7 @@ export default function SignIn() {
           {/* Google 登录 */}
           <button
             onClick={() => handleSocialSignIn("google")}
+            disabled={isLoading}
             className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-md flex items-center justify-center"
           >
             <svg
@@ -275,6 +394,7 @@ export default function SignIn() {
           {/* GitHub 登录 */}
           <button
             onClick={() => handleSocialSignIn("github")}
+            disabled={isLoading}
             className="w-full bg-gray-800 text-white py-2 px-4 rounded-md flex items-center justify-center"
           >
             <svg

@@ -8,21 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",
-    "deploy": "next build && next export -o build && gh-pages -d build",
-    "package:init": "ts-node scripts/package-mobile.ts",
-    "package:android": "ts-node scripts/package-mobile.ts android",
-    "package:ios": "ts-node scripts/package-mobile.ts ios",
-    "cap:sync": "npx cap sync",
-    "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios",
-    "release:help": "echo '要发布新版本，请访问 GitHub 仓库的 Actions 标签页，选择 \"构建并发布应用\" 工作流，然后点击 \"Run workflow\" 按钮。'"
+    "deploy": "next build && next export -o build && gh-pages -d build"
   },
   "dependencies": {
-    "@capacitor-community/sqlite": "^7.0.0",
-    "@capacitor/android": "^7.1.0",
-    "@capacitor/cli": "^7.1.0",
-    "@capacitor/core": "^7.1.0",
-    "@capacitor/ios": "^7.1.0",
     "@cloudflare/d1": "^1.4.1",
     "@svgr/webpack": "^8.1.0",
     "@types/better-sqlite3": "^7.6.12",
